@@ -1,0 +1,11 @@
+[2025-10-24 15:03:00][INFO] 共享内存初始化成功: file_block, size=1024
+[2025-10-24 15:03:00][INFO] 共享内存销毁完成
+[2025-10-24 15:03:00][INFO] 文件复制成功: /home/wang/桌面/aaa.txt -> /home/wang/下载/aaa.txt
+[2025-10-24 15:03:00][INFO] 文件移动成功: /home/wang/桌面/aaa.txt -> /home/wang/下载/aaa.txt
+[2025-10-24 15:03:04][INFO] 共享内存初始化成功: file_block, size=1024
+[2025-10-24 15:03:04][INFO] 共享内存销毁完成
+[2025-10-24 15:03:04][INFO] 文件复制成功: /home/wang/下载/aaa.txt -> /home/wang/桌面/aaa.txt
+[2025-10-24 15:03:04][INFO] 文件移动成功: /home/wang/下载/aaa.txt -> /home/wang/桌面/aaa.txt
+[2025-10-24 15:03:07][INFO] 共享内存初始化成功: file_block, size=1024
+[2025-10-24 15:03:07][INFO] 共享内存销毁完成
+[2025-10-24 15:03:07][INFO] 文件复制成功: /home/wang/桌面/aaa.txt -> /home/wang/下载/aaa.txt

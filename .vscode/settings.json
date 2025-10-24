@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "stdlib.h": "c",
+        "fcntl.h": "c",
+        "fb_log.h": "c",
+        "fb_file.h": "c",
+        "mman.h": "c",
+        "stdio.h": "c",
+        "fb_config.h": "c"
+    }
+}
