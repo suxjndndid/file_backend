@@ -5,10 +5,40 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QPushButton, QMessageBox, QApplication
 )
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import QSize, QTimer
-from py_backend import copy_file, move_file
+from PySide6.QtCore import QSize, QThread, Signal
+import py_backend as backend_wrapper  # 你现有的C接口封装
+
+# -------- 在代码中设置平台，防止 Wayland 问题 --------
+os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 ICONS_PATH = os.path.join(os.path.dirname(__file__), "icons")
+
+
+# ---------------- 后台线程 ----------------
+class FileWorker(QThread):
+    task_done = Signal(str, bool)  # 文件操作模式, 是否成功
+
+    def __init__(self, mode, src, dst=None):
+        super().__init__()
+        self.mode = mode  # "copy", "move", "delete"
+        self.src = src
+        self.dst = dst
+
+    def run(self):
+        success = False
+        if self.mode == "copy":
+            result = backend_wrapper.copy_file(self.src, self.dst)
+            success = (result == 0)
+        elif self.mode == "move":
+            result = backend_wrapper.move_file(self.src, self.dst)
+            success = (result == 0)
+        elif self.mode == "delete":
+            result = backend_wrapper.delete_file(self.src)
+            success = (result == 0)
+
+        # 发出信号通知主线程
+        self.task_done.emit(self.mode, success)
+
 
 # ---------------- 主窗口 ----------------
 class MainWindow(QMainWindow):
@@ -16,6 +46,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("本地文件管理")
         self.resize(1000, 500)
+
+        # 保存正在运行的线程，防止被销毁
+        self.workers = []
 
         self.central = QWidget()
         self.setCentralWidget(self.central)
@@ -76,6 +109,7 @@ class MainWindow(QMainWindow):
             tree = self.right_tree
 
         tree.clear()
+
         # 添加上级目录
         if path != "/":
             parent = QTreeWidgetItem(["", "..", "目录", "", ""])
@@ -96,19 +130,17 @@ class MainWindow(QMainWindow):
 
                 mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(full_path)))
 
-                # 创建行
                 item = QTreeWidgetItem(["", name, ftype, size, mtime])
                 item.setIcon(0, QIcon(os.path.join(ICONS_PATH, icon)))
                 tree.addTopLevelItem(item)
         except Exception as e:
             QMessageBox.warning(self, "错误", f"{side} 目录读取失败: {e}")
 
-        # 固定列宽并截断超出部分
-        tree.setColumnWidth(0, 30)   # 图标列
-        tree.setColumnWidth(1, 250)  # 名称
-        tree.setColumnWidth(2, 60)   # 类型
-        tree.setColumnWidth(3, 80)   # 大小
-        tree.setColumnWidth(4, 150)  # 修改时间
+        tree.setColumnWidth(0, 30)
+        tree.setColumnWidth(1, 250)
+        tree.setColumnWidth(2, 60)
+        tree.setColumnWidth(3, 80)
+        tree.setColumnWidth(4, 150)
         tree.setAlternatingRowColors(True)
 
     # ---------------- 双击打开目录 ----------------
@@ -129,16 +161,16 @@ class MainWindow(QMainWindow):
         else:
             self.right_path = path
 
-        QTimer.singleShot(0, lambda: self.update_tree(side))
+        self.update_tree(side)
 
     # ---------------- 复制 ----------------
     def copy_selected(self, direction):
         if direction == "left_to_right":
             src_path, dst_path = self.left_path, self.right_path
-            tree_src, tree_dst = self.left_tree, self.right_tree
+            tree_src = self.left_tree
         else:
             src_path, dst_path = self.right_path, self.left_path
-            tree_src, tree_dst = self.right_tree, self.left_tree
+            tree_src = self.right_tree
 
         sel_items = tree_src.selectedItems()
         if not sel_items:
@@ -148,22 +180,19 @@ class MainWindow(QMainWindow):
             if item.text(2) == "文件":
                 src = os.path.join(src_path, item.text(1))
                 dst = os.path.join(dst_path, item.text(1))
-                if copy_file(src, dst) == 0:
-                    QMessageBox.information(self, "成功", f"复制成功: {item.text(1)}")
-                else:
-                    QMessageBox.critical(self, "失败", f"复制失败: {item.text(1)}")
-
-        self.update_tree("left")
-        self.update_tree("right")
+                worker = FileWorker("copy", src, dst)
+                worker.task_done.connect(self.show_result)
+                worker.start()
+                self.workers.append(worker)
 
     # ---------------- 移动 ----------------
     def move_selected(self, direction):
         if direction == "left_to_right":
             src_path, dst_path = self.left_path, self.right_path
-            tree_src, tree_dst = self.left_tree, self.right_tree
+            tree_src = self.left_tree
         else:
             src_path, dst_path = self.right_path, self.left_path
-            tree_src, tree_dst = self.right_tree, self.left_tree
+            tree_src = self.right_tree
 
         sel_items = tree_src.selectedItems()
         if not sel_items:
@@ -173,13 +202,24 @@ class MainWindow(QMainWindow):
             if item.text(2) == "文件":
                 src = os.path.join(src_path, item.text(1))
                 dst = os.path.join(dst_path, item.text(1))
-                if move_file(src, dst) == 0:
-                    QMessageBox.information(self, "成功", f"移动成功: {item.text(1)}")
-                else:
-                    QMessageBox.critical(self, "失败", f"移动失败: {item.text(1)}")
+                worker = FileWorker("move", src, dst)
+                worker.task_done.connect(self.show_result)
+                worker.start()
+                self.workers.append(worker)
 
+    # ---------------- 显示结果 ----------------
+    def show_result(self, mode, success):
+        if success:
+            QMessageBox.information(self, "成功", f"{mode} 操作成功")
+        else:
+            QMessageBox.critical(self, "失败", f"{mode} 操作失败")
+
+        # 操作完成后刷新左右目录
         self.update_tree("left")
         self.update_tree("right")
+
+        # 清理已结束线程
+        self.workers = [w for w in self.workers if w.isRunning()]
 
 
 if __name__ == "__main__":

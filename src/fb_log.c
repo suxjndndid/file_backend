@@ -7,7 +7,7 @@ static FILE *g_log_file = NULL;
 
 void log_init(const char *log_file) {
     if (log_file) {
-        g_log_file = fopen(log_file, "a+");
+        g_log_file = fopen(log_file, "w");
         if (!g_log_file) {
             perror("fopen log_file");
         }
